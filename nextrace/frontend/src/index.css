@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+* { box-sizing: border-box; }
+body { margin: 0; background-color: #0a0e14; color: #e6e9ef; font-family: 'Inter', system-ui, sans-serif; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #0f1420; }
+::-webkit-scrollbar-thumb { background: #232b3a; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #2c3648; }
+.mono { font-family: 'JetBrains Mono', monospace; }
