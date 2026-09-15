@@ -1,0 +1,24 @@
+# --- Python / backend ---
+nextrace/backend/venv/
+nextrace/backend/__pycache__/
+nextrace/backend/app/__pycache__/
+**/__pycache__/
+*.pyc
+nextrace/backend/nextrace.db
+nextrace/backend/generated_reports/
+.env
+*.env
+
+# --- Node / frontend ---
+nextrace/frontend/node_modules/
+nextrace/frontend/dist/
+nextrace/frontend/tsconfig.tsbuildinfo
+
+# --- Generated / sample data (kept locally, not in version control) ---
+nextrace/sample_dataset/
+
+# --- OS / editor ---
+.DS_Store
+.vscode/
+.idea/
+*.log
