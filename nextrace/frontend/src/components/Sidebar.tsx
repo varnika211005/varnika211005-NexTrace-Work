@@ -13,6 +13,7 @@ const OVERVIEW_ITEMS = [
   { to: "/timeline", label: "Timeline", icon: "⏱" },
   { to: "/evidence", label: "Evidence", icon: "▣" },
   { to: "/entity-resolution", label: "Entity Resolution", icon: "⇄" },
+  { to: "/access-requests", label: "Access Requests", icon: "✉" },
   { to: "/reports", label: "Reports", icon: "▦" },
 ];
 
@@ -22,7 +23,8 @@ const ADMIN_ITEMS = [
   { to: "/admin/audit", label: "Audit & Provenance", icon: "◉" },
   { to: "/admin/users", label: "User Management", icon: "◫" },
   { to: "/admin/access-control", label: "Access Control", icon: "🔒" },
-  { to: "/admin/security", label: "Security", icon: "🛡" },
+  { to: "/admin/security", label: "Security & Integrity", icon: "🛡" },
+  { to: "/admin/backup", label: "Backup & Restore", icon: "⬇" },
 ];
 
 const ACCOUNT_ITEMS = [{ to: "/profile", label: "My Profile", icon: "◍" }];
@@ -46,20 +48,29 @@ function NavGroup({ label, items }: { label: string; items: { to: string; label:
   );
 }
 
-export default function Sidebar() {
+export default function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   const { user, isAdmin } = useAuth();
 
   return (
-    <aside className="w-64 shrink-0 bg-panel border-r border-border flex flex-col h-screen sticky top-0">
+    <aside className={`fixed left-0 top-0 w-64 shrink-0 bg-panel border-r border-border flex flex-col h-screen z-20 transition-transform duration-300 ease-in-out ${open ? "translate-x-0" : "-translate-x-full"}`}>
       <div className="px-5 py-5 border-b border-border">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-md bg-gradient-to-br from-accent to-accent2 flex items-center justify-center text-bg font-bold text-sm">
-            NT
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <img src="/logo.png" alt="NexTrace" className="w-9 h-9 object-contain shrink-0" />
+            <div>
+              <div className="font-bold text-gray-100 tracking-wide text-sm">NEXTRACE</div>
+              <div className="text-[10px] text-muted uppercase tracking-wider">Criminal Network Analysis</div>
+            </div>
           </div>
-          <div>
-            <div className="font-bold text-gray-100 tracking-wide text-sm">NEXTRACE</div>
-            <div className="text-[10px] text-muted uppercase tracking-wider">Criminal Network Analysis</div>
-          </div>
+          <button
+            type="button"
+            onClick={onToggle}
+            title="Close sidebar"
+            aria-label="Close sidebar"
+            className="text-muted hover:text-gray-200 transition-colors text-sm leading-none p-1 -mr-1"
+          >
+            ◀
+          </button>
         </div>
       </div>
 
@@ -77,4 +88,4 @@ export default function Sidebar() {
       </div>
     </aside>
   );
-}
+} 

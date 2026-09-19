@@ -14,6 +14,24 @@ const SECTION_OPTIONS = [
   { key: "provenance", label: "Provenance / Audit Information" },
 ];
 
+interface HistoryEntry {
+  filename: string;
+  label: string;
+  blob: Blob;
+  generatedAt: string;
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 export default function Reports() {
   const [params] = useSearchParams();
   const [cases, setCases] = useState<any[]>([]);
@@ -23,7 +41,7 @@ export default function Reports() {
   const [personId, setPersonId] = useState(params.get("person_id") || "");
   const [sections, setSections] = useState<Set<string>>(new Set(SECTION_OPTIONS.map((s) => s.key)));
   const [generating, setGenerating] = useState(false);
-  const [history, setHistory] = useState<{ filename: string; url: string; label: string }[]>([]);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -46,9 +64,12 @@ export default function Reports() {
       const body: any = { sections: Array.from(sections) };
       if (scope === "case") body.case_id = caseId;
       if (scope === "person") body.person_id = personId;
-      const result = await api.generateReport(body);
+
+      const { blob, filename } = await api.generateReport(body);
       const label = scope === "case" ? `Case ${caseId}` : scope === "person" ? entities.find((e) => e.id === personId)?.name || personId : "Full Dataset";
-      setHistory((h) => [{ filename: result.filename, url: api.downloadReportUrl(result.filename), label }, ...h]);
+
+      triggerDownload(blob, filename);
+      setHistory((h) => [{ filename, label, blob, generatedAt: new Date().toLocaleTimeString() }, ...h]);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -58,7 +79,7 @@ export default function Reports() {
 
   return (
     <div>
-      <PageHeader title="Report Generation" subtitle="Build a PDF investigation report from current data, with full provenance and a guilt-neutral disclaimer." />
+      <PageHeader title="Report Generation" subtitle="Generates a PDF directly from current data — nothing is stored on the server, it downloads straight to your device." />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 bg-card border border-border rounded-lg p-5">
@@ -101,22 +122,29 @@ export default function Reports() {
             disabled={generating || (scope === "case" && !caseId) || (scope === "person" && !personId) || sections.size === 0}
             className="px-5 py-2.5 rounded-md bg-accent text-bg font-semibold text-sm hover:bg-accent2 disabled:opacity-40"
           >
-            {generating ? "Generating…" : "Generate Report"}
+            {generating ? "Generating…" : "Generate & Download Report"}
           </button>
         </div>
 
         <div className="bg-card border border-border rounded-lg p-5">
-          <h3 className="text-sm font-semibold text-gray-100 mb-3">Generated Reports</h3>
+          <h3 className="text-sm font-semibold text-gray-100 mb-3">This Session's Reports</h3>
+          <p className="text-[11px] text-muted mb-3">
+            Kept in your browser's memory only for this session — click to re-download without regenerating.
+          </p>
           {history.length === 0 ? (
-            <div className="text-muted text-sm">Reports you generate this session will appear here.</div>
+            <div className="text-muted text-sm">Reports you generate will appear here.</div>
           ) : (
             <div className="space-y-2">
               {history.map((h, i) => (
-                <a key={i} href={h.url} target="_blank" rel="noreferrer" className="block border border-border rounded p-3 hover:border-accent/50 transition-colors">
+                <button
+                  key={i}
+                  onClick={() => triggerDownload(h.blob, h.filename)}
+                  className="w-full text-left block border border-border rounded p-3 hover:border-accent/50 transition-colors"
+                >
                   <div className="text-gray-200 text-sm font-medium">{h.label}</div>
                   <div className="text-muted text-xs mono mt-1">{h.filename}</div>
-                  <div className="text-accent text-xs mt-1">Download PDF →</div>
-                </a>
+                  <div className="text-accent text-xs mt-1">Generated {h.generatedAt} · Download again →</div>
+                </button>
               ))}
             </div>
           )}

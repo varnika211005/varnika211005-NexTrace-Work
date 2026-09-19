@@ -1,13 +1,9 @@
 import json
-import os
 from datetime import datetime
 
 from fpdf import FPDF
 
-from . import models, analysis, intelligence
-
-REPORTS_DIR = os.path.join(os.path.dirname(__file__), "..", "generated_reports")
-os.makedirs(REPORTS_DIR, exist_ok=True)
+from . import models, analysis, intelligence, evidence_integrity, ledger
 
 DISCLAIMER = (
     "Automated analysis provides investigative leads and evidence organization. "
@@ -16,7 +12,7 @@ DISCLAIMER = (
 )
 
 
-def build_report_content(db, case_id, person_id, sections, generated_by):
+def build_report_content(db, case_id, person_id, sections, generated_by, allowed_person_ids=None):
     persons_q = db.query(models.Person).filter(models.Person.is_unresolved == False)
     if case_id:
         subjects = persons_q.filter(models.Person.case_id == case_id).all()
@@ -25,6 +21,9 @@ def build_report_content(db, case_id, person_id, sections, generated_by):
         p = db.query(models.Person).get(person_id)
         subjects = [p] if p else []
         title = f"Subject Report — {p.name if p else person_id}"
+    elif allowed_person_ids is not None:
+        subjects = persons_q.filter(models.Person.id.in_(allowed_person_ids)).all() if allowed_person_ids else []
+        title = "My Assigned Cases — Investigation Report"
     else:
         subjects = persons_q.all()
         title = "Full Dataset Investigation Report"
@@ -50,8 +49,13 @@ def build_report_content(db, case_id, person_id, sections, generated_by):
 
     if "executive_summary" in sections:
         n_high = sum(1 for r in all_rels if r["confidence"] >= 70)
+        prefix = ""
+        if case_id:
+            meta = db.query(models.CaseFile).get(case_id)
+            if meta:
+                prefix = f"Case {case_id} is currently '{meta.status}'. "
         content["sections"]["executive_summary"] = (
-            f"This report covers {len(subjects)} subject(s) and {len(all_rels)} detected relationship "
+            prefix + f"This report covers {len(subjects)} subject(s) and {len(all_rels)} detected relationship "
             f"record(s) (counted per subject), of which {n_high} are high-confidence. All findings are "
             f"investigative leads derived from cross-source evidence correlation and require human "
             f"verification before any action is taken."
@@ -83,13 +87,25 @@ def build_report_content(db, case_id, person_id, sections, generated_by):
         ]
 
     if "pattern_findings" in sections:
-        content["sections"]["pattern_findings"] = intelligence.generate_intelligence_indicators(db, G)
+        indicators = intelligence.generate_intelligence_indicators(db, G)
+        if allowed_person_ids is not None:
+            subject_ids = {p.id for p in subjects}
+            indicators = [i for i in indicators if any(e in subject_ids for e in i.get("related_entities", []))]
+        content["sections"]["pattern_findings"] = indicators
 
     if "provenance" in sections:
+        hashed = db.query(models.EvidenceHash).count()
+        chain = ledger.HashChainLedger(db)
+        chain_summary = chain.summarize()
         content["sections"]["provenance"] = (
             "Every relationship above is traceable to specific source records (call detail records, "
             "financial transaction logs, CCTV sighting metadata, or investigation report narratives). "
-            "Use the Evidence Repository in the application to inspect raw source rows."
+            "Use the Evidence Repository in the application to inspect raw source rows. "
+            f"Evidence integrity: {hashed} raw record(s) are sealed with SHA-256 and anchored in the "
+            f"immutable {chain_summary['label']} ({chain_summary['block_count']} block(s), chain "
+            f"{'valid' if chain_summary['chain_valid'] else 'BROKEN'}). Biometric analysis remains an "
+            "advanced/future capability - biometric evidence is stored as provenance/metadata only "
+            "and no match results are produced."
         )
 
     return content
@@ -204,6 +220,5 @@ def render_pdf(content: dict) -> str:
     pdf.multi_cell(0, 5, DISCLAIMER)
 
     filename = f"NexTrace_Report_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.pdf"
-    path = os.path.join(REPORTS_DIR, filename)
-    pdf.output(path)
-    return filename
+    pdf_bytes = bytes(pdf.output())  # in-memory only - nothing is written to disk
+    return filename, pdf_bytes

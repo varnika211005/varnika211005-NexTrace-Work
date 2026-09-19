@@ -51,12 +51,13 @@ concept: the burner phone or mule account lead).
 
 Two roles, one shared platform — **the backend enforces this, not just the UI**:
 
-- **Investigator** — views everything (dashboard, entities, network, timeline,
-  evidence, cases, reports) but cannot ingest data, run processing, confirm entity
-  matches, or access admin pages.
-- **Admin Investigator** — everything above, plus Data Ingestion, Processing
-  Pipeline, Entity Resolution actions, Audit & Provenance, User Management, Access
-  Control, and Security.
+- **Investigator** — sees the full dashboard, entities, network, timeline, evidence,
+  cases, and reports experience, but **only for cases they've been assigned to**
+  (see §4 below) — and cannot ingest data, run processing, confirm entity matches,
+  or access admin pages.
+- **Admin Investigator** — sees everything, unrestricted, plus Data Ingestion,
+  Processing Pipeline, Entity Resolution actions, Audit & Provenance, User
+  Management, Access Control, and Security.
 
 Login does **not** ask which role you are — the backend looks it up and renders
 the right interface. An Investigator hitting an admin API route directly gets a
@@ -70,7 +71,38 @@ the right interface. An Investigator hitting an admin API route directly gets a
 
 ---
 
-## 4. Tech stack
+## 4. Case-scoped access, collaboration, and access requests
+
+An Investigator only sees data connected to the case(s) an Admin has assigned
+them to (Administration → Access Control) — not the whole dataset. This is
+enforced on the backend across every endpoint (dashboard, entities, graph,
+timeline, evidence, cases, reports), not just hidden in the UI.
+
+**Two levels of visibility:**
+- **Full access** — every subject in a case the Investigator is assigned to:
+  complete profile, evidence, timeline, all relationships.
+- **Limited ("bridge") access** — a subject *outside* their assigned case(s) who
+  has a direct relationship to someone in their case. Only that specific
+  connection is visible (who, how, what evidence) — not the other subject's full
+  profile, notes, or unrelated relationships. This is what lets an Investigator
+  notice "this case touches another case" without that other case's data being
+  exposed to them.
+
+**Multiple Investigators per case:** assign the same case to more than one
+Investigator from Access Control — there's no limit. Everyone assigned to a case
+shares a **Case Discussion** thread on that case's detail page, so co-assigned
+Investigators can coordinate leads without leaving the app.
+
+**Access Requests:** if an Investigator needs a case or a specific subject outside
+their assignment, a **Request Access** button appears automatically wherever they
+hit that boundary (a restricted profile, a limited graph node, a 403 on a case).
+They can also file a general request from the **Access Requests** page. Every
+Admin Investigator sees pending requests there and can Approve (which immediately
+grants the access) or Deny, with an optional note either way.
+
+---
+
+## 5. Tech stack
 
 - **Frontend:** React + TypeScript + Vite, Tailwind CSS (dark theme), `react-force-graph-2d`
 - **Backend:** Python + FastAPI, JWT auth (PyJWT)
@@ -80,7 +112,7 @@ the right interface. An Investigator hitting an admin API route directly gets a
 
 ---
 
-## 5. Project structure
+## 6. Project structure
 
 ```
 nextrace/
@@ -88,6 +120,7 @@ nextrace/
 │   ├── app/
 │   │   ├── main.py           # All API routes
 │   │   ├── analysis.py       # Multi-source relationship detection engine (core logic)
+│   │   ├── scope.py          # Case-scoped access control - what each Investigator can see
 │   │   ├── intelligence.py   # Summaries, reliability scoring, pattern indicators
 │   │   ├── reports.py        # PDF report generation
 │   │   ├── auth.py           # JWT + password hashing + role dependencies
@@ -95,11 +128,14 @@ nextrace/
 │   │   └── seed.py           # Creates the two demo user accounts
 │   └── requirements.txt
 ├── frontend/
+│   ├── public/logo.png
 │   └── src/
 │       ├── pages/            # Dashboard, Entities, EntityProfile, NetworkGraph, Timeline,
-│       │                       Evidence, Cases, CaseDetail, EntityResolution, Reports, Profile
+│       │                       Evidence, Cases, CaseDetail, EntityResolution, Reports,
+│       │                       Profile, AccessRequests
 │       ├── pages/admin/      # Ingestion, Processing, Audit, Users, AccessControl, Security
-│       ├── components/       # Sidebar, Guards, ConfidenceBadge, Badge, PageHeader, EmptyState
+│       ├── components/       # Sidebar, Guards, ConfidenceBadge, Badge, PageHeader,
+│       │                       EmptyState, RequestAccessButton
 │       ├── context/           # AuthContext
 │       └── api/client.ts     # Typed API client
 ├── sample_dataset/
@@ -113,7 +149,7 @@ nextrace/
 
 ---
 
-## 6. Step-by-step: run the project
+## 7. Step-by-step: run the project
 
 ### Prerequisites
 Python 3.10+, Node.js 18+
@@ -152,9 +188,27 @@ automatically.
    non-admin experience — the Administration section disappears from the sidebar
    entirely, and admin API routes return 403 if hit directly.
 
+### Adding new data later (daily ingestion)
+
+Data Ingestion defaults to **"Add to existing data"** — uploading a new CSV adds
+any new records and updates any record whose `id` already exists, without
+touching anything else already in the database. This is what real usage needs:
+today's new call log adds to yesterday's instead of erasing it, and the network
+grows over time as more evidence comes in. You can also select multiple files at
+once in a single card (e.g. several days' worth of CDR exports) and they'll be
+processed in sequence.
+
+**"Replace entire dataset"** is available as an explicit, separate option on each
+card (with a warning before it runs) for when you genuinely want to wipe that
+data type and start over — e.g. correcting a bad import.
+
+Either way, **relationships aren't recomputed automatically** — after adding new
+data, go to Processing Pipeline and click Start Processing again to rebuild the
+graph across the combined old + new data.
+
 ---
 
-## 7. How confidence scoring works (ground truth)
+## 8. How confidence scoring works (ground truth)
 
 Every pair of resolved entities is scored per evidence category, summed and
 capped at 100:
@@ -186,16 +240,16 @@ high-confidence relationships.
 
 ---
 
-## 8. Verified results (actually run against this exact codebase and dataset)
+## 9. Verified results (actually run against this exact codebase and dataset)
 
 After uploading all 5 files and running the processing pipeline:
 
 - **22 entities** (including 1 duplicate-record test case) → **26 graph nodes**
   after adding 4 auto-detected unresolved identifiers (2 unknown phone numbers,
   1 unknown account, 1 unidentified vehicle plate)
-- **47 relationships detected** — 16 High / 7 Medium / 24 Low confidence
+- **47 relationships detected** — 17 High / 6 Medium / 24 Low confidence
 - **4 communities**, **1 fully isolated entity** (Ishaan Bose — no links found anywhere)
-- **Most connected subject:** Ravi Sharma (8 connections) — also flagged as a Bridge Entity
+- **Most connected subject:** Arjun Mehta (8 connections) — also flagged as a Bridge Entity
 - **7 entity-resolution candidates** generated, topped by a 95.2% match between
   "Arjun Mehta" and a duplicate FIR entry filed as "Arun Mehta"
 
@@ -218,9 +272,29 @@ Other good demo moments:
 - The **Network Graph** page: filter by relationship type (uncheck everything
   except "Financial Transfer") to watch the graph reshape to show only money flows.
 
+### Case-scoped access, tested end-to-end
+As `ADMIN01`, assign case `NX-0241` to `INV204` (Access Control), then log in as
+`INV204`:
+- **Dashboard** correctly restricts to **6 full-access subjects** (Arjun Mehta,
+  Ravi Sharma, Priya Nair, Rahul Kapoor, Sneha Joshi, and the duplicate "Arun
+  Mehta" record) with **15 relationships**, not the full 47.
+- **Entities list** shows those 6 as full access, plus **4 more** (Neha Rao,
+  Suresh Iyer, Manoj Pillai, Rohit Malhotra) tagged **"Limited View"** — each
+  connected to the case through a real relationship, but nothing else about them
+  exposed.
+- Opening a Limited View subject (e.g. Neha Rao) shows only the specific
+  relationships tying her back into NX-0241 — no phone, notes, evidence, or
+  timeline.
+- Opening a subject with **zero** connection to NX-0241 (e.g. the fully isolated
+  Ishaan Bose) correctly returns "Access Restricted" with a **Request Access**
+  button.
+- Filing a person-access request for Neha Rao, then approving it as `ADMIN01`,
+  immediately upgrades her from Limited to full access on `INV204`'s next page
+  load — no re-login needed.
+
 ---
 
-## 9. (Optional) Switch to PostgreSQL
+## 10. (Optional) Switch to PostgreSQL
 
 ```bash
 createdb nextrace
@@ -232,7 +306,7 @@ No code changes needed — `backend/app/database.py` reads this automatically.
 
 ---
 
-## 10. Extending this further
+## 11. Extending this further
 
 - **More evidence sources:** add a new upload type + extend `analysis.py`'s
   evidence categories the same way CDR/Financial/CCTV/Reports were added.
@@ -247,7 +321,7 @@ No code changes needed — `backend/app/database.py` reads this automatically.
 
 ---
 
-## 11. Important framing note
+## 12. Important framing note
 
 This is a decision-support prototype using **entirely fictional data**. Confidence
 scores and "reliability" reflect the strength and consistency of available

@@ -1,7 +1,9 @@
 import { Routes, Route, Link, Navigate } from "react-router-dom";
+import { useState } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ProtectedRoute, AdminRoute } from "./components/Guards";
 import Sidebar from "./components/Sidebar";
+import Footer from "./components/Footer";
 
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -13,6 +15,7 @@ import Evidence from "./pages/Evidence";
 import Cases from "./pages/Cases";
 import CaseDetail from "./pages/CaseDetail";
 import EntityResolution from "./pages/EntityResolution";
+import AccessRequests from "./pages/AccessRequests";
 import Reports from "./pages/Reports";
 import Profile from "./pages/Profile";
 import AdminIngestion from "./pages/admin/Ingestion";
@@ -21,17 +24,30 @@ import AdminAudit from "./pages/admin/Audit";
 import AdminUsers from "./pages/admin/Users";
 import AdminAccessControl from "./pages/admin/AccessControl";
 import AdminSecurity from "./pages/admin/Security";
+import AdminBackup from "./pages/admin/Backup";
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { user, isAdmin, logout } = useAuth();
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   return (
-    <div className="flex bg-bg min-h-screen">
-      <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
+    <div className="bg-bg min-h-screen">
+      <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen((v) => !v)} />
+      <div className={`flex flex-col min-h-screen min-w-0 transition-[padding-left] duration-300 ease-in-out ${sidebarOpen ? "pl-64" : "pl-0"}`}>
         <header className="h-16 border-b border-border bg-panel/60 backdrop-blur flex items-center justify-between px-6 sticky top-0 z-10">
-          <Link to="/" className="text-sm text-muted hover:text-gray-200">
-            NexTrace / Investigation Workspace
-          </Link>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen((v) => !v)}
+              title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
+              aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
+              className="text-muted hover:text-gray-200 transition-colors text-sm"
+            >
+              {sidebarOpen ? "◀" : "▶"}
+            </button>
+            <Link to="/" className="text-sm text-muted hover:text-gray-200">
+              NexTrace / Investigation Workspace
+            </Link>
+          </div>
           <div className="flex items-center gap-4 text-xs">
             <span className="text-muted">
               <span className="text-gray-300 font-medium">{user?.name}</span>{" "}
@@ -45,6 +61,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         <main className="flex-1 p-6 min-w-0">{children}</main>
+        <Footer />
       </div>
     </div>
   );
@@ -69,6 +86,7 @@ function AppRoutes() {
                 <Route path="/cases" element={<Cases />} />
                 <Route path="/cases/:caseId" element={<CaseDetail />} />
                 <Route path="/entity-resolution" element={<EntityResolution />} />
+                <Route path="/access-requests" element={<AccessRequests />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/admin/ingestion" element={<AdminRoute><AdminIngestion /></AdminRoute>} />
@@ -77,6 +95,7 @@ function AppRoutes() {
                 <Route path="/admin/users" element={<AdminRoute><AdminUsers /></AdminRoute>} />
                 <Route path="/admin/access-control" element={<AdminRoute><AdminAccessControl /></AdminRoute>} />
                 <Route path="/admin/security" element={<AdminRoute><AdminSecurity /></AdminRoute>} />
+                <Route path="/admin/backup" element={<AdminRoute><AdminBackup /></AdminRoute>} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Shell>

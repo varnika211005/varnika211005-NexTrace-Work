@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Text, ForeignKey, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, Float, Text, ForeignKey, DateTime, Boolean, UniqueConstraint
 from sqlalchemy.sql import func
 from .database import Base
 
@@ -167,3 +167,176 @@ class CaseAccess(Base):
     case_id = Column(String, nullable=False)
     analyst_id = Column(String, nullable=False)
     access_level = Column(String, default="Read/Write")
+
+
+class CaseMessage(Base):
+    """A message in a case's shared discussion thread - visible to every investigator/admin
+    assigned to that case, so co-assigned investigators can coordinate leads and progress."""
+    __tablename__ = "case_messages"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    case_id = Column(String, nullable=False)
+    sender_analyst_id = Column(String, nullable=False)
+    sender_name = Column(String, nullable=False)
+    message = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class PersonAccessGrant(Base):
+    """A targeted grant of a single person's full profile to an investigator, independent of
+    their case assignments - created when an admin approves a person-level access request."""
+    __tablename__ = "person_access_grants"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    analyst_id = Column(String, nullable=False)
+    person_id = Column(String, nullable=False)
+    granted_by = Column(String, nullable=True)
+    granted_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AccessRequest(Base):
+    """An investigator's request for access to a case or a specific person outside their
+    current assignment. Admin reviews and approves/denies; approval creates the matching grant."""
+    __tablename__ = "access_requests"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    requested_by = Column(String, nullable=False)
+    requester_name = Column(String, nullable=False)
+    request_type = Column(String, nullable=False)  # "case" | "person"
+    target_id = Column(String, nullable=False)      # a case_id or a person_id
+    target_label = Column(String, nullable=True)     # human-readable snapshot (name/title) at request time
+    reason = Column(Text, nullable=False)
+    status = Column(String, default="Pending")       # Pending | Approved | Denied
+    admin_note = Column(Text, nullable=True)
+    reviewed_by = Column(String, nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---------------------------------------------------------------------------
+# Evidence integrity (SHA-256) + immutable ledger (blockchain-ready adapter)
+# ---------------------------------------------------------------------------
+class EvidenceHash(Base):
+    """App-side registry of the recorded SHA-256 for every raw evidence record.
+
+    This is the value that run-time verification recomputes the current row against.
+    The same hash (plus provenance metadata only) is anchored into the immutable
+    ledger, so even tampering with this table cannot make a modified record pass.
+    """
+    __tablename__ = "evidence_hashes"
+    __table_args__ = (UniqueConstraint("evidence_type", "record_id", name="uq_evidence_record"),)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    evidence_type = Column(String, nullable=False)  # call_record|financial_record|cctv_sighting|case_report|person|biometric
+    record_id = Column(String, nullable=False)
+    sha256 = Column(String, nullable=False)          # 64-char hex digest of the canonical serialized record
+    algorithm = Column(String, default="SHA-256")
+    sealed_at = Column(DateTime(timezone=True), server_default=func.now())
+    sealed_by = Column(String, nullable=True)
+
+
+class LedgerBlock(Base):
+    """One append-only "block" of the immutable ledger.
+
+    Each block carries a hash of (previous block hash + timestamp + payload), so the
+    chain is cryptographically tamper-evident: modifying or reordering any block breaks
+    every subsequent block's hash. The payload contains ONLY SHA-256 hashes and
+    provenance metadata (evidence type/id, case reference, source file, sealed time) -
+    sensitive or raw evidence never enters the ledger. Labeled honestly as an
+    "Immutable Ledger / Blockchain-Ready Adapter" - a production deployment would swap
+    the HashChainLedger backend for a real chain (e.g. Ethereum / Hyperledger Besu).
+    """
+    __tablename__ = "ledger_blocks"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    index = Column(Integer, nullable=False, unique=True)  # block height (genesis = 0)
+    prev_hash = Column(String, nullable=False)            # sha256 of the previous block (genesis: 64 zeros)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    payload = Column(Text, nullable=False)                # JSON list of {evidence_type, record_id, sha256, ...}
+    hash = Column(String, nullable=False)                 # sha256(index|prev_hash|timestamp|payload)
+
+
+class SecurityEvent(Base):
+    """A detected security event - created whenever evidence verification finds a hash
+    mismatch (tampering). Events are NEVER deleted by the demo restore process; they form
+    the permanent tamper-detection record for admin review."""
+    __tablename__ = "security_events"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_type = Column(String, default="integrity_violation")
+    severity = Column(String, default="HIGH")
+    evidence_type = Column(String, nullable=False)
+    record_id = Column(String, nullable=False)
+    case_id = Column(String, nullable=True)
+    expected_hash = Column(String, nullable=False)  # hash recorded at seal time / in the ledger
+    current_hash = Column(String, nullable=False)   # hash recomputed at verification time
+    detected_by = Column(String, nullable=True)
+    detected_at = Column(DateTime(timezone=True), server_default=func.now())
+    description = Column(Text, nullable=True)
+    status = Column(String, default="Open")  # Open | Acknowledged
+
+
+class CaseStatusHistory(Base):
+    """Permanent audit trail of every case-status change: previous status -> new status,
+    who changed it, when, and why."""
+    __tablename__ = "case_status_history"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    case_id = Column(String, nullable=False)
+    previous_status = Column(String, nullable=False)
+    new_status = Column(String, nullable=False)
+    changed_by = Column(String, nullable=False)
+    changed_at = Column(DateTime(timezone=True), server_default=func.now())
+    comment = Column(Text, nullable=True)
+
+
+class BackupRecord(Base):
+    """Admin-created backup of all case data, written as a gzipped JSON manifest.
+    The backup file's own SHA-256 is recorded here for integrity of the backup itself.
+    (Automated restore is documented as a future capability, not implemented.)"""
+    __tablename__ = "backup_records"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    filename = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_by = Column(String, nullable=False)
+    status = Column(String, default="Completed")
+    size_bytes = Column(Integer, default=0)
+    sha256 = Column(String, nullable=True)
+    records = Column(Text, nullable=True)  # JSON snapshot of per-table record counts
+
+
+class BiometricEvidence(Base):
+    """Biometric evidence reference - PROVENANCE AND METADATA ONLY.
+
+    Stores where/when a biometric sample (face/fingerprint/voice reference) was collected
+    and which subject it belongs to. No templates, no raw biometric data, and no match
+    scores are stored or computed in this prototype: biometric matching is an advanced /
+    future capability exposed through the BiometricsBackend adapter. Until a real engine
+    is connected, the backend reports "not configured" rather than fabricating results."""
+    __tablename__ = "biometric_evidence"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    person_id = Column(String, nullable=True)
+    person_name = Column(String, nullable=True)
+    modality = Column(String, nullable=False)      # face | fingerprint | voice
+    source_file = Column(String, nullable=True)    # reference sheet / collection record
+    captured_at = Column(String, nullable=True)
+    location = Column(String, nullable=True)
+    case_id = Column(String, nullable=True)
+    provenance_notes = Column(Text, nullable=True)
+    algorithm = Column(String, default="Not Configured")  # matcher engine label once connected
+    status = Column(String, default="Stored")             # Stored | Cancelled
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class DemoTamperRecord(Base):
+    """Snapshot of a DEMO-ONLY controlled tamper applied to a single evidence record.
+
+    Stores the exact ORIGINAL value so the demo can be safely reverted without corrupting
+    the seeded dataset. Restoring a tamper marks this row 'Reverted' but NEVER deletes the
+    SecurityEvent, audit entries, or ledger history that documented the violation."""
+    __tablename__ = "demo_tamper_records"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    evidence_type = Column(String, nullable=False)
+    record_id = Column(String, nullable=False)
+    field_name = Column(String, nullable=False)
+    original_value = Column(Text, nullable=False)
+    tampered_value = Column(Text, nullable=False)
+    case_id = Column(String, nullable=True)
+    applied_at = Column(DateTime(timezone=True), server_default=func.now())
+    applied_by = Column(String, nullable=False)
+    status = Column(String, default="Active")  # Active | Reverted
+    restored_at = Column(DateTime(timezone=True), nullable=True)
+    restored_by = Column(String, nullable=True)

@@ -38,9 +38,7 @@ export default function Login() {
 
       <div className="relative w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-accent to-accent2 flex items-center justify-center text-bg font-bold text-lg mb-3">
-            NT
-          </div>
+          <img src="/logo.png" alt="NexTrace" className="w-20 h-20 object-contain mb-3" />
           <div className="text-gray-100 font-bold text-lg tracking-wide">NEXTRACE</div>
           <div className="text-muted text-xs mt-1 text-center">
             AI-Powered Criminal Network Analysis System
@@ -84,6 +82,11 @@ export default function Login() {
             {loading ? "Signing in…" : "Sign In"}
           </button>
         </form>
+
+        <div className="mt-4 rounded-md border border-border bg-[#0f1420] px-3 py-2.5 text-[11px] text-muted leading-relaxed">
+          <span className="text-gray-300">Biometric / passkey sign-in (WebAuthn):</span>{" "}
+          not configured in this environment — sign in with your Analyst ID and password.
+        </div>
 
         <div className="mt-5 text-center text-[11px] text-muted leading-relaxed">
           Demo credentials — Admin: <span className="mono text-gray-400">ADMIN01 / admin123</span>

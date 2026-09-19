@@ -80,10 +80,20 @@ class Resolver:
         self.account_to_id = {}
         self.vehicle_to_id = {}
         self.name_to_id = {}
+        # Two passes for phone: a person's own PRIMARY phone is always the authoritative owner of
+        # that number. alt_phone (a secondary/associate contact number on file) only fills in a
+        # number nobody's primary phone already claims - otherwise, if e.g. Ravi's on-file
+        # alt_phone happens to equal Arjun's primary phone, whichever person was processed last
+        # would silently "steal" ownership of Arjun's own number, misattributing every call to it.
         for p in self.persons.values():
-            for ph in (p.phone, p.alt_phone):
-                if ph:
-                    self.phone_to_id[_norm(ph)] = p.id
+            if p.phone:
+                self.phone_to_id[_norm(p.phone)] = p.id
+        for p in self.persons.values():
+            if p.alt_phone:
+                key = _norm(p.alt_phone)
+                if key not in self.phone_to_id:
+                    self.phone_to_id[key] = p.id
+        for p in self.persons.values():
             if p.account_number:
                 self.account_to_id[_norm(p.account_number)] = p.id
             if p.vehicle_number:

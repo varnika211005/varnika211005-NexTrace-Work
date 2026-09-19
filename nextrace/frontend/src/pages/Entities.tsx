@@ -2,14 +2,18 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import EmptyState from "../components/EmptyState";
+import { useAuth } from "../context/AuthContext";
 import { api } from "../api/client";
 
 export default function Entities() {
+  const { isAdmin } = useAuth();
   const [entities, setEntities] = useState<any[]>([]);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [includeUnresolved, setIncludeUnresolved] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   function load(query?: string) {
     setLoading(true);
@@ -24,6 +28,20 @@ export default function Entities() {
     load(q);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [includeUnresolved]);
+
+  async function handleDelete(id: string) {
+    setDeletingId(id);
+    setError(null);
+    try {
+      await api.deleteEntity(id);
+      setConfirmDeleteId(null);
+      load(q);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <div>
@@ -72,6 +90,11 @@ export default function Entities() {
                           Unresolved
                         </span>
                       )}
+                      {e.access_level === "bridge" && (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider bg-purple/10 text-purple border border-purple/30">
+                          Limited View
+                        </span>
+                      )}
                     </div>
                     <div className="text-muted text-xs mono">{e.id}</div>
                   </td>
@@ -81,14 +104,41 @@ export default function Entities() {
                     <span className={`mono font-semibold ${e.connection_count === 0 ? "text-muted" : "text-gray-200"}`}>{e.connection_count}</span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`mono text-xs font-semibold ${e.reliability >= 70 ? "text-good" : e.reliability >= 40 ? "text-warn" : "text-muted"}`}>
-                      {e.reliability}%
-                    </span>
+                    {e.reliability === null || e.reliability === undefined ? (
+                      <span className="text-muted text-xs">—</span>
+                    ) : (
+                      <span className={`mono text-xs font-semibold ${e.reliability >= 70 ? "text-good" : e.reliability >= 40 ? "text-warn" : "text-muted"}`}>
+                        {e.reliability}%
+                      </span>
+                    )}
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <Link to={`/entities/${e.id}`} className="text-accent text-xs font-medium hover:underline">
-                      View Profile →
-                    </Link>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {confirmDeleteId === e.id ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="text-bad text-xs">Delete permanently?</span>
+                        <button
+                          disabled={deletingId === e.id}
+                          onClick={() => handleDelete(e.id)}
+                          className="text-bad text-xs font-semibold hover:underline disabled:opacity-50"
+                        >
+                          {deletingId === e.id ? "Deleting…" : "Yes"}
+                        </button>
+                        <button onClick={() => setConfirmDeleteId(null)} className="text-muted text-xs hover:underline">
+                          Cancel
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-3">
+                        {isAdmin && !e.is_unresolved && (
+                          <button onClick={() => setConfirmDeleteId(e.id)} className="text-bad text-xs font-medium hover:underline">
+                            Delete
+                          </button>
+                        )}
+                        <Link to={`/entities/${e.id}`} className="text-accent text-xs font-medium hover:underline">
+                          View Profile →
+                        </Link>
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -1,0 +1,6 @@
+# Runtime artifacts created by NexTrace itself (should never be committed)
+backend/backups/
+backend/data/
+backend/__pycache__/
+backend/app/__pycache__/
+*.pyc

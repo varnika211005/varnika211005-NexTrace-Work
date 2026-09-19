@@ -57,11 +57,13 @@ export const api = {
 
   // ---- Ingestion (admin) ----
   ingestionFiles: () => get<any[]>("/admin/ingestion/files"),
-  uploadDataset: async (datasetType: string, file: File) => {
+  uploadDataset: async (datasetType: string, file: File, mode: "append" | "replace" = "append") => {
     const form = new FormData();
     form.append("file", file);
+    form.append("mode", mode);
     return request<any>(`/admin/ingestion/upload/${datasetType}`, { method: "POST", body: form });
   },
+  deleteDataset: (datasetType: string) => del<any>(`/admin/ingestion/${datasetType}`),
 
   // ---- Processing (admin) ----
   startProcessing: () => post<{ job_id: number; message: string }>("/admin/processing/start"),
@@ -79,6 +81,7 @@ export const api = {
     return get<any[]>(`/entities${qs ? `?${qs}` : ""}`);
   },
   getEntity: (id: string) => get<any>(`/entities/${id}`),
+  deleteEntity: (id: string) => del<any>(`/admin/entities/${id}`),
 
   // ---- Graph ----
   getGraph: (minConfidence = 0, categories?: string[]) => {
@@ -101,15 +104,49 @@ export const api = {
     return get<any[]>(`/evidence${qs ? `?${qs}` : ""}`);
   },
   evidenceDetail: (type: string, id: string) => get<any>(`/evidence/${type}/${id}`),
+  // ---- Evidence integrity (SHA-256) ----
+  verifyEvidence: (type: string, id: string) => post<any>(`/evidence/${type}/${id}/verify`),
+  sealEvidence: () => post<any>("/admin/evidence/seal"),
+  listBiometric: () => get<any[]>("/evidence/biometric"),
+  registerBiometric: (body: any) => post<any>("/admin/evidence/biometric/register", body),
+  biometricMatch: (bid: number) => post<any>(`/evidence/biometric/${bid}/match`),
 
   // ---- Cases ----
   listCases: () => get<any[]>("/cases"),
   getCase: (caseId: string) => get<any>(`/cases/${caseId}`),
+  changeCaseStatus: (caseId: string, newStatus: string, comment?: string) =>
+    post<any>(`/cases/${caseId}/status`, { new_status: newStatus, comment: comment || "" }),
 
   // ---- Reports ----
-  generateReport: (body: { case_id?: string; person_id?: string; sections?: string[] }) =>
-    post<{ filename: string; download_url: string }>("/reports/generate", body),
-  downloadReportUrl: (filename: string) => `${BASE}/reports/download/${filename}`,
+  // The backend now generates the PDF entirely in memory and streams it back in one call -
+  // nothing is written to disk server-side, so there's no separate "download" step or filename
+  // to track afterward.
+  generateReport: async (body: { case_id?: string; person_id?: string; sections?: string[] }) => {
+    const token = getToken();
+    const res = await fetch(`${BASE}/reports/generate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const j = await res.json();
+        detail = j.detail || detail;
+      } catch {
+        /* ignore */
+      }
+      throw new ApiError(detail, res.status);
+    }
+    const disposition = res.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    const filename = match ? match[1] : `NexTrace_Report_${Date.now()}.pdf`;
+    const blob = await res.blob();
+    return { blob, filename };
+  },
 
   // ---- Admin: Audit ----
   auditLog: (params: Record<string, string> = {}) => {
@@ -122,6 +159,9 @@ export const api = {
   createUser: (body: { analyst_id: string; name: string; password: string; role: string }) =>
     post<any>("/admin/users", body),
   toggleUser: (analystId: string) => post<any>(`/admin/users/${analystId}/deactivate`),
+  updateUser: (analystId: string, updates: { name?: string; role?: string; new_password?: string }) =>
+    request<any>(`/admin/users/${analystId}`, { method: "PATCH", body: JSON.stringify(updates) }),
+  deleteUser: (analystId: string) => del<any>(`/admin/users/${analystId}`),
 
   // ---- Admin: Access control ----
   listAccess: () => get<any[]>("/admin/access-control"),
@@ -129,8 +169,58 @@ export const api = {
     post<any>("/admin/access-control", body),
   removeAccess: (id: number) => del<any>(`/admin/access-control/${id}`),
 
+  // ---- Case messaging (shared discussion thread per case) ----
+  listCaseMessages: (caseId: string) => get<any[]>(`/cases/${caseId}/messages`),
+  postCaseMessage: (caseId: string, message: string) =>
+    post<any>(`/cases/${caseId}/messages`, { message }),
+
+  // ---- Access requests ----
+  listAccessRequests: () => get<any[]>("/access-requests"),
+  createAccessRequest: (body: { request_type: "case" | "person"; target_id: string; reason: string }) =>
+    post<any>("/access-requests", body),
+  approveAccessRequest: (id: number, admin_note?: string) =>
+    post<any>(`/admin/access-requests/${id}/approve`, { admin_note }),
+  denyAccessRequest: (id: number, admin_note?: string) =>
+    post<any>(`/admin/access-requests/${id}/deny`, { admin_note }),
+
   // ---- Admin: Security ----
   security: () => get<any>("/admin/security"),
+  securityEvents: (status?: string) =>
+    get<any[]>(`/admin/security/events${status ? `?status=${status}` : ""}`),
+  ackSecurityEvent: (id: number) => post<any>(`/admin/security/events/${id}/ack`),
+  simulateTamper: (body: { evidence_type: string; record_id: string; field_name: string; tampered_value: string }) =>
+    post<any>("/admin/security/simulate-tamper", body),
+  restoreTamperedEvidence: (body: { evidence_type: string; record_id: string }) =>
+    post<any>("/admin/security/restore-tampered-evidence", body),
+  tamperRecords: () => get<any[]>("/admin/security/tamper-records"),
+
+  // ---- Admin: Immutable ledger ----
+  ledger: () => get<any>("/admin/ledger"),
+  verifyLedger: () => post<any>("/admin/ledger/verify"),
+
+  // ---- Admin: Backup & Restore ----
+  createBackup: () => post<any>("/admin/backup"),
+  listBackups: () => get<any[]>("/admin/backup"),
+  downloadBackup: async (id: number) => {
+    const token = getToken();
+    const res = await fetch(`${BASE}/admin/backup/${id}/download`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const j = await res.json();
+        detail = j.detail || detail;
+      } catch {
+        /* ignore */
+      }
+      throw new ApiError(detail, res.status);
+    }
+    const disposition = res.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    const blob = await res.blob();
+    return { blob, filename: match ? match[1] : `nextrace_backup_${id}.json.gz` };
+  },
 
   // ---- Admin: Reset ----
   resetAll: () => post<any>("/admin/reset"),

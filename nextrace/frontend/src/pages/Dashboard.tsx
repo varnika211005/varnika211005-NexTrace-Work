@@ -91,6 +91,18 @@ export default function Dashboard() {
         </Link>
       </PageHeader>
 
+      {data.scope === "assigned_cases" && (
+        <div className="mb-5 bg-accent/10 border border-accent/30 rounded-md px-4 py-3 text-sm text-gray-300 flex items-center justify-between flex-wrap gap-2">
+          <span>
+            Showing data for your assigned case{data.assigned_case_ids?.length === 1 ? "" : "s"}:{" "}
+            <span className="mono text-accent">{data.assigned_case_ids?.join(", ") || "none"}</span>
+          </span>
+          <Link to="/access-requests" className="text-accent text-xs font-medium hover:underline whitespace-nowrap">
+            Need access to more? Request it →
+          </Link>
+        </div>
+      )}
+
       {/* Row 1: Subject Profile + Reliability (mandatory hero elements) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
         {subject ? (

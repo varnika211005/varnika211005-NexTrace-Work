@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import ConfidenceBadge from "../components/ConfidenceBadge";
-import { api } from "../api/client";
+import RequestAccessButton from "../components/RequestAccessButton";
+import { useAuth } from "../context/AuthContext";
+import { api, ApiError } from "../api/client";
 
 function DetailRow({ label, value }: { label: string; value?: string | number | null }) {
   return (
@@ -17,33 +19,113 @@ const TABS = ["Overview", "Relationships", "Timeline", "Evidence"] as const;
 
 export default function EntityProfile() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [accessDenied, setAccessDenied] = useState(false);
   const [tab, setTab] = useState<(typeof TABS)[number]>("Overview");
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!id) return;
     setData(null);
+    setError(null);
+    setAccessDenied(false);
     setTab("Overview");
-    api.getEntity(id).then(setData).catch((e) => setError(e.message));
+    setConfirmDelete(false);
+    api.getEntity(id).then(setData).catch((e: any) => {
+      if (e instanceof ApiError && e.status === 403) {
+        setAccessDenied(true);
+      } else {
+        setError(e.message);
+      }
+    });
   }, [id]);
+
+  async function handleDelete() {
+    if (!id) return;
+    setDeleting(true);
+    try {
+      await api.deleteEntity(id);
+      navigate("/entities");
+    } catch (e: any) {
+      setError(e.message);
+      setDeleting(false);
+    }
+  }
+
+  if (accessDenied) {
+    return (
+      <div>
+        <PageHeader title="Access Restricted" subtitle={`Entity ID: ${id}`} />
+        <div className="bg-card border border-border rounded-lg p-8 max-w-lg">
+          <p className="text-gray-300 text-sm mb-4">
+            This subject isn't connected to any case you're assigned to, so their profile isn't
+            visible to you. If you believe this subject is relevant to your investigation, you can
+            request access from an Admin Investigator.
+          </p>
+          {id && <RequestAccessButton requestType="person" targetId={id} targetLabel={`this subject (${id})`} />}
+        </div>
+      </div>
+    );
+  }
 
   if (error) return <div className="text-bad text-sm">{error}</div>;
   if (!data) return <div className="text-muted text-sm">Loading profile…</div>;
 
-  const { entity, summary, reliability, relationships, is_bridge_entity, degree_centrality_rank, evidence, timeline } = data;
+  const { entity, summary, reliability, relationships, is_bridge_entity, degree_centrality_rank, evidence, timeline, access_level } = data;
+  const isBridgeView = access_level === "bridge";
 
   return (
     <div>
-      <PageHeader title={entity.name} subtitle={`Entity ID: ${entity.id} · ${entity.node_subtype}`}>
-        <Link to={`/network?focus=${entity.id}`} className="px-3 py-1.5 rounded-md bg-accent text-bg text-sm font-semibold hover:bg-accent2">
-          View in Network →
-        </Link>
-        <Link to={`/reports?person_id=${entity.id}`} className="px-3 py-1.5 rounded-md bg-[#1a2130] border border-border text-gray-200 text-sm font-semibold hover:bg-[#212a3d]">
-          Generate Report
-        </Link>
+      {confirmDelete && (
+        <div className="mb-5 bg-bad/10 border border-bad/30 rounded-lg p-4">
+          <p className="text-bad text-sm mb-3">
+            Permanently delete <span className="font-semibold">{entity.name}</span> ({entity.id}) and every
+            relationship involving them? Raw evidence records (calls, transactions, sightings, reports) that
+            reference their phone/account/vehicle are kept — they'll simply appear as "Unresolved" after the
+            next processing run. This cannot be undone.
+          </p>
+          <div className="flex gap-2">
+            <button disabled={deleting} onClick={handleDelete} className="px-3 py-1.5 rounded-md bg-bad text-white text-xs font-semibold hover:bg-red-600 disabled:opacity-50">
+              {deleting ? "Deleting…" : "Yes, Delete Permanently"}
+            </button>
+            <button onClick={() => setConfirmDelete(false)} className="px-3 py-1.5 rounded-md border border-border text-gray-300 text-xs font-semibold hover:bg-[#1a2130]">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      <PageHeader title={entity.name} subtitle={`Entity ID: ${entity.id}${isBridgeView ? "" : ` · ${entity.node_subtype}`}`}>
+        {!isBridgeView && (
+          <Link to={`/network?focus=${entity.id}`} className="px-3 py-1.5 rounded-md bg-accent text-bg text-sm font-semibold hover:bg-accent2">
+            View in Network →
+          </Link>
+        )}
+        {!isBridgeView && (
+          <Link to={`/reports?person_id=${entity.id}`} className="px-3 py-1.5 rounded-md bg-[#1a2130] border border-border text-gray-200 text-sm font-semibold hover:bg-[#212a3d]">
+            Generate Report
+          </Link>
+        )}
+        {isAdmin && !entity.is_unresolved && !isBridgeView && (
+          <button onClick={() => setConfirmDelete(true)} className="px-3 py-1.5 rounded-md bg-bad/10 border border-bad/30 text-bad text-sm font-semibold hover:bg-bad/20">
+            Delete Entity
+          </button>
+        )}
       </PageHeader>
+
+      {isBridgeView && (
+        <div className="mb-5 bg-warn/10 border border-warn/30 rounded-lg p-4">
+          <p className="text-warn text-sm mb-3">
+            {summary}
+          </p>
+          <RequestAccessButton requestType="person" targetId={entity.id} targetLabel={entity.name} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
         {/* Left: identity card, always visible */}
@@ -58,46 +140,56 @@ export default function EntityProfile() {
               </span>
             )}
           </div>
-          <DetailRow label="Age" value={entity.age} />
-          <DetailRow label="Gender" value={entity.gender} />
-          <DetailRow label="Aliases" value={entity.aliases?.replace(/\|/g, ", ")} />
-          <DetailRow label="Phone" value={entity.phone} />
-          <DetailRow label="Alt. Phone" value={entity.alt_phone} />
-          <DetailRow label="Address" value={entity.address} />
-          <DetailRow label="Vehicle" value={entity.vehicle_number} />
-          <DetailRow label="Account" value={entity.account_number} />
-          <DetailRow label="Organization" value={entity.organization} />
-          <DetailRow label="Case ID" value={entity.case_id} />
-          <DetailRow label="Crime Type" value={entity.crime_type} />
-          <DetailRow label="Status" value={entity.status} />
-          <DetailRow label="First / Last Observed" value={entity.first_seen ? `${entity.first_seen} → ${entity.last_seen}` : null} />
-          {entity.notes && (
-            <div className="mt-3 pt-3 border-t border-border">
-              <div className="text-muted text-xs mb-1">Case Notes</div>
-              <div className="text-gray-300 text-sm italic">"{entity.notes}"</div>
+          {isBridgeView ? (
+            <div className="text-muted text-sm py-4 text-center">
+              Full details are hidden — only the connection(s) linking this subject to your case are shown.
             </div>
+          ) : (
+            <>
+              <DetailRow label="Age" value={entity.age} />
+              <DetailRow label="Gender" value={entity.gender} />
+              <DetailRow label="Aliases" value={entity.aliases?.replace(/\|/g, ", ")} />
+              <DetailRow label="Phone" value={entity.phone} />
+              <DetailRow label="Alt. Phone" value={entity.alt_phone} />
+              <DetailRow label="Address" value={entity.address} />
+              <DetailRow label="Vehicle" value={entity.vehicle_number} />
+              <DetailRow label="Account" value={entity.account_number} />
+              <DetailRow label="Organization" value={entity.organization} />
+              <DetailRow label="Case ID" value={entity.case_id} />
+              <DetailRow label="Crime Type" value={entity.crime_type} />
+              <DetailRow label="Status" value={entity.status} />
+              <DetailRow label="First / Last Observed" value={entity.first_seen ? `${entity.first_seen} → ${entity.last_seen}` : null} />
+              {entity.notes && (
+                <div className="mt-3 pt-3 border-t border-border">
+                  <div className="text-muted text-xs mb-1">Case Notes</div>
+                  <div className="text-gray-300 text-sm italic">"{entity.notes}"</div>
+                </div>
+              )}
+            </>
           )}
         </div>
 
         {/* Right: reliability + summary */}
         <div className="lg:col-span-2 space-y-5">
-          <div className="bg-card border border-border rounded-lg p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-100">Investigative Summary</h3>
-              <div className="flex items-center gap-3 text-xs text-muted">
-                {degree_centrality_rank && <span>Connectivity rank <span className="mono text-gray-300">#{degree_centrality_rank}</span></span>}
-                <span className={`font-semibold ${reliability.overall >= 70 ? "text-good" : reliability.overall >= 40 ? "text-warn" : "text-bad"}`}>
-                  Reliability {reliability.overall}%
-                </span>
+          {!isBridgeView && (
+            <div className="bg-card border border-border rounded-lg p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-100">Investigative Summary</h3>
+                <div className="flex items-center gap-3 text-xs text-muted">
+                  {degree_centrality_rank && <span>Connectivity rank <span className="mono text-gray-300">#{degree_centrality_rank}</span></span>}
+                  <span className={`font-semibold ${reliability.overall >= 70 ? "text-good" : reliability.overall >= 40 ? "text-warn" : "text-bad"}`}>
+                    Reliability {reliability.overall}%
+                  </span>
+                </div>
               </div>
+              <p className="text-sm text-gray-300 leading-relaxed">{summary}</p>
             </div>
-            <p className="text-sm text-gray-300 leading-relaxed">{summary}</p>
-          </div>
+          )}
 
           {/* Tabs */}
           <div className="bg-card border border-border rounded-lg">
             <div className="flex border-b border-border overflow-x-auto">
-              {TABS.map((t) => (
+              {(isBridgeView ? (["Relationships"] as const) : TABS).map((t) => (
                 <button
                   key={t}
                   onClick={() => setTab(t)}
@@ -113,7 +205,7 @@ export default function EntityProfile() {
             </div>
 
             <div className="p-5">
-              {tab === "Overview" && (
+              {tab === "Overview" && !isBridgeView && (
                 <div className="text-sm text-gray-300 space-y-3">
                   <p>
                     This profile aggregates every evidence source (call records, financial transactions,
@@ -171,7 +263,7 @@ export default function EntityProfile() {
                   </div>
                 ))}
 
-              {tab === "Timeline" &&
+              {tab === "Timeline" && !isBridgeView &&
                 (timeline.length === 0 ? (
                   <div className="text-muted text-sm py-6 text-center">No timeline events for this entity.</div>
                 ) : (
@@ -188,7 +280,7 @@ export default function EntityProfile() {
                   </div>
                 ))}
 
-              {tab === "Evidence" &&
+              {tab === "Evidence" && !isBridgeView &&
                 (evidence.length === 0 ? (
                   <div className="text-muted text-sm py-6 text-center">No raw evidence records reference this entity.</div>
                 ) : (
