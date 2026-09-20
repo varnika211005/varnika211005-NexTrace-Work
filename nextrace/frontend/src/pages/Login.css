@@ -1,0 +1,53 @@
+.login-bg {
+  background:
+    radial-gradient(1200px 850px at 50% 38%, rgba(23, 74, 138, 0.5), transparent 70%),
+    radial-gradient(900px 640px at 50% 52%, rgba(16, 64, 118, 0.35), transparent 72%),
+    radial-gradient(760px 420px at 74% 108%, rgba(10, 62, 96, 0.4), transparent 62%),
+    radial-gradient(640px 360px at 20% 106%, rgba(14, 74, 98, 0.35), transparent 60%),
+    linear-gradient(180deg, #020914 0%, #03111f 55%, #041528 100%);
+}
+
+.login-mesh-fade {
+  -webkit-mask-image: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.85) 0%,
+    rgba(0, 0, 0, 0.4) 45%,
+    transparent 88%
+  );
+  mask-image: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.85) 0%,
+    rgba(0, 0, 0, 0.4) 45%,
+    transparent 88%
+  );
+}
+
+/* Short desktop heights: gentle compression (1600x900, 1366x768, 1280x720).
+   Doubled selectors keep specificity above Tailwind utilities (.py-10 etc.),
+   which appear later in the bundle. */
+@media (max-height: 960px) {
+  .login-main.login-main { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+  .login-card.login-card { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+  .login-logo-row.login-logo-row { margin-bottom: 0.75rem; }
+  .login-divider.login-divider { margin-bottom: 1rem; }
+  .login-status.login-status { margin-bottom: 1rem; }
+  .login-field.login-field { margin-bottom: 1rem; }
+  .login-notice.login-notice { margin-top: 0.75rem; padding-top: 0.625rem; padding-bottom: 0.625rem; }
+  .login-demo.login-demo { margin-top: 1.25rem; }
+  .login-access.login-access { margin-top: 0.5rem; }
+  .login-footer.login-footer { padding-bottom: 0.625rem; }
+}
+
+/* Very short desktop heights: tighter fit (1366x768, 1280x720) */
+@media (max-height: 800px) {
+  .login-main.login-main { padding-top: 0.5rem; padding-bottom: 0.25rem; }
+  .login-card.login-card { padding-top: 0.875rem; padding-bottom: 0.875rem; }
+  .login-logo-row.login-logo-row { margin-bottom: 0.375rem; }
+  .login-divider.login-divider { margin-bottom: 0.625rem; }
+  .login-status.login-status { margin-bottom: 0.625rem; }
+  .login-field.login-field { margin-bottom: 0.625rem; }
+  .login-notice.login-notice { margin-top: 0.5rem; padding-top: 0.375rem; padding-bottom: 0.375rem; }
+  .login-demo.login-demo { margin-top: 0.5rem; }
+  .login-access.login-access { margin-top: 0.125rem; }
+  .login-footer.login-footer { padding-bottom: 0.375rem; }
+}

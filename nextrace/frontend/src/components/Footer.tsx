@@ -17,7 +17,7 @@ export default function Footer() {
       <div className="mx-auto max-w-7xl px-6 py-10 grid grid-cols-2 lg:grid-cols-4 gap-8">
         <div>
           <div className="flex items-center gap-2.5 mb-3">
-            <img src="/logo/nextrace-logo.png" alt="NexTrace" className="w-10 h-10 object-contain" />
+            <img src="/logo/nextracelogo.png" alt="NexTrace" className="w-10 h-10 object-contain" />
             <div>
               <div className="font-bold text-gray-100 tracking-wide text-sm">NEXTRACE</div>
               <div className="text-[10px] text-muted uppercase tracking-wider">AI-Powered Criminal Network Analysis System</div>
