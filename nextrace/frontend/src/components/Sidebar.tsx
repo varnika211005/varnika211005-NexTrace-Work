@@ -56,7 +56,7 @@ export default function Sidebar({ open, onToggle }: { open: boolean; onToggle: (
       <div className="px-5 py-5 border-b border-border">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="NexTrace" className="w-9 h-9 object-contain shrink-0" />
+            <img src="/logo/nextracelogo.png" alt="NexTrace" className="w-12 h-12 object-contain shrink-0" />
             <div>
               <div className="font-bold text-gray-100 tracking-wide text-sm">NEXTRACE</div>
               <div className="text-[10px] text-muted uppercase tracking-wider">Criminal Network Analysis</div>
