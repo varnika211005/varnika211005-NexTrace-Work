@@ -1,0 +1,583 @@
+/* ============ Network Graph — reference-layout redesign ============ */
+/* All rules are scoped under .network-page so they never leak
+   into the rest of the app. Layout is a compact top toolbar, a
+   statistics strip, and a dominant graph canvas with a minimap,
+   legend, and sliding entity-panel overlay. */
+
+@keyframes networkSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.network-slide-in {
+  animation: networkSlideIn 300ms ease-out;
+}
+
+/* ---------- Page & shell ---------- */
+
+.network-page .ng-graph-shell {
+  box-shadow: inset 0 0 0 1px rgba(35, 43, 58, 0.4), 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+/* Stylised technical backdrop rendered above the canvas, below the controls. */
+
+.network-page .ng-bg {
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.network-page .ng-bg-grid {
+  background-image:
+    linear-gradient(to right, rgba(148, 163, 184, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.05) 1px, transparent 1px),
+    linear-gradient(to right, rgba(148, 163, 184, 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.07) 1px, transparent 1px);
+  background-size: 44px 44px, 44px 44px, 220px 220px, 220px 220px;
+}
+
+.network-page .ng-bg-glow {
+  background: radial-gradient(
+    640px 380px at 50% 20%,
+    rgba(34, 211, 238, 0.1),
+    rgba(167, 139, 250, 0.05) 55%,
+    transparent 72%
+  );
+  transition: background 400ms ease;
+}
+
+.network-page .ng-bg-glow[data-active="1"] {
+  background: radial-gradient(
+    640px 420px at 50% 18%,
+    rgba(34, 211, 238, 0.17),
+    rgba(167, 139, 250, 0.09) 55%,
+    transparent 72%
+  );
+}
+
+.network-page .ng-bg-vignette {
+  background: radial-gradient(130% 130% at 50% 46%, transparent 52%, rgba(2, 6, 12, 0.66) 100%);
+}
+
+/* ---------- Top toolbar (filters + actions) ---------- */
+
+.network-page .ng-toolbar {
+  background: rgba(10, 14, 20, 0.82);
+  backdrop-filter: blur(10px);
+  border: 1px solid #232b3a;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px rgba(35, 43, 58, 0.2), 0 6px 18px rgba(0, 0, 0, 0.35);
+  padding: 7px 10px;
+  z-index: 10;
+}
+
+.network-page .ng-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #e6e9ef;
+  white-space: nowrap;
+}
+
+.network-page .ng-brand::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: linear-gradient(135deg, #22d3ee, #a78bfa);
+  box-shadow: 0 0 8px rgba(34, 211, 238, 0.55);
+}
+
+/* ---------- Search box ---------- */
+
+.network-page .ng-searchbox {
+  width: clamp(180px, 26vw, 280px);
+  flex: 0 1 auto;
+}
+
+.network-page .ng-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #5d6673;
+  pointer-events: none;
+}
+
+.network-page .ng-search-input {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px 0 30px;
+  font-size: 12.5px;
+  color: #dbe2ec;
+  background: rgba(15, 20, 32, 0.72);
+  border: 1px solid #232b3a;
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.network-page .ng-search-input::placeholder {
+  color: #5d6673;
+}
+
+.network-page .ng-search-input:focus {
+  border-color: rgba(34, 211, 238, 0.55);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.12);
+}
+
+.network-page .ng-results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: rgba(13, 18, 28, 0.98);
+  backdrop-filter: blur(10px);
+  border: 1px solid #232b3a;
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  max-height: min(320px, 60vh);
+  overflow-y: auto;
+}
+
+.network-page .ng-results button:hover {
+  background: #1a2130;
+}
+
+/* ---------- Dropdown controls ---------- */
+
+.network-page .ng-dd {
+  position: relative;
+}
+
+.network-page .ng-dd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #c7d2de;
+  background: rgba(15, 20, 32, 0.72);
+  border: 1px solid #232b3a;
+  border-radius: 8px;
+  white-space: nowrap;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
+}
+
+.network-page .ng-dd-btn:hover,
+.network-page .ng-dd-btn[aria-expanded="true"] {
+  border-color: rgba(34, 211, 238, 0.55);
+  color: #e6e9ef;
+}
+
+.network-page .ng-dd-label {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.network-page .ng-dd-badge {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: rgba(34, 211, 238, 0.14);
+  border: 1px solid rgba(34, 211, 238, 0.4);
+  color: #7de3f5;
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+}
+
+.network-page .ng-dd-caret {
+  color: #5d6673;
+  transition: transform 150ms ease;
+}
+
+.network-page .ng-dd-btn[aria-expanded="true"] .ng-dd-caret {
+  transform: rotate(180deg);
+  color: #7de3f5;
+}
+
+.network-page .ng-dd-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  min-width: 210px;
+  max-width: 280px;
+  max-height: min(400px, 60vh);
+  overflow-y: auto;
+  background: rgba(13, 18, 28, 0.98);
+  backdrop-filter: blur(10px);
+  border: 1px solid #232b3a;
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  padding: 5px;
+}
+
+.network-page .ng-dd-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  color: #c7d2de;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.network-page .ng-dd-item:hover {
+  background: #1a2130;
+}
+
+.network-page .ng-dd-active {
+  color: #7de3f5;
+  background: rgba(34, 211, 238, 0.08);
+}
+
+.network-page .ng-dd-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.network-page .ng-dd-check input {
+  accent-color: #22d3ee;
+  margin: 0;
+}
+
+.network-page .ng-dd-footer {
+  border-top: 1px solid rgba(35, 43, 58, 0.9);
+  margin-top: 5px;
+  padding: 6px 4px 2px 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.network-page .ng-dd-done {
+  padding: 4px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #7de3f5;
+  background: rgba(34, 211, 238, 0.08);
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  transition: background 120ms ease;
+}
+
+.network-page .ng-dd-done:hover {
+  background: rgba(34, 211, 238, 0.16);
+}
+
+/* ---------- Toolbar action buttons ---------- */
+
+.network-page .ng-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #dbe2ec;
+  background: rgba(15, 20, 32, 0.72);
+  border: 1px solid #232b3a;
+  border-radius: 8px;
+  white-space: nowrap;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
+}
+
+.network-page .ng-btn:hover {
+  border-color: rgba(34, 211, 238, 0.55);
+  color: #e6e9ef;
+}
+
+/* ---------- Statistics strip ---------- */
+
+.network-page .ng-stats {
+  display: flex;
+  align-items: stretch;
+  background: rgba(10, 14, 20, 0.6);
+  border: 1px solid #232b3a;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px rgba(35, 43, 58, 0.2);
+  padding: 5px 10px;
+}
+
+.network-page .ng-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 3px 12px;
+}
+
+.network-page .ng-stat + .ng-stat {
+  border-left: 1px solid rgba(35, 43, 58, 0.85);
+}
+
+.network-page .ng-stat-value {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  color: #e6e9ef;
+  font-variant-numeric: tabular-nums;
+}
+
+.network-page .ng-stat-label {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #8b93a7;
+}
+
+/* ---------- Overlay panel (entity / relationship / analytics / path) ---------- */
+
+.network-page .ng-overlay {
+  width: min(380px, calc(100% - 24px));
+}
+
+.network-page .ng-panel-head {
+  background: linear-gradient(180deg, rgba(26, 33, 48, 0.55), transparent);
+}
+
+.network-page .ng-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--ac, #8fa0b3);
+  color: #0a0e14;
+  box-shadow: 0 0 14px color-mix(in srgb, var(--ac, #8fa0b3) 45%, transparent);
+}
+
+.network-page .ng-close {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #8b93a7;
+  background: rgba(15, 20, 32, 0.6);
+  border: 1px solid #232b3a;
+  transition: color 150ms ease, border-color 150ms ease;
+}
+
+.network-page .ng-close:hover {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.5);
+}
+
+.network-page .ng-bridge-notice {
+  background: rgba(167, 139, 250, 0.1);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  color: #c4b5fd;
+}
+
+/* ---------- Entity / relationship detail content ---------- */
+
+.network-page .ng-meta {
+  border: 1px solid #232b3a;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.network-page .ng-meta-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  font-size: 11.5px;
+}
+
+.network-page .ng-meta-row + .ng-meta-row {
+  border-top: 1px solid rgba(35, 43, 58, 0.6);
+}
+
+.network-page .ng-meta-key {
+  color: #8b93a7;
+}
+
+.network-page .ng-meta-val {
+  color: #dbe2ec;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.network-page .ng-section-heading {
+  letter-spacing: 0.06em;
+}
+
+.network-page .ng-rel-row {
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.network-page .ng-rel-row:hover {
+  background: #141a24;
+}
+
+.network-page .ng-cta {
+  box-shadow: 0 6px 18px rgba(34, 211, 238, 0.18);
+}
+
+/* ---------- Legend (bottom-left) ---------- */
+
+.network-page .ng-legend {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 10;
+  display: flex;
+  align-items: stretch;
+  padding: 10px 12px;
+  background: rgba(10, 14, 20, 0.78);
+  backdrop-filter: blur(10px);
+  border: 1px solid #232b3a;
+  border-radius: 10px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
+  font-size: 10.5px;
+  color: #b6c2d4;
+  user-select: none;
+}
+
+.network-page .ng-legend-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.network-page .ng-legend-title {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #7f89a6;
+  margin-bottom: 1px;
+}
+
+.network-page .ng-legend-divider {
+  width: 1px;
+  margin: 0 10px;
+  background: rgba(35, 43, 58, 0.9);
+}
+
+.network-page .ng-legend-note {
+  color: #6b7280;
+  border-top: 1px solid rgba(35, 43, 58, 0.7);
+  padding-top: 5px;
+}
+
+.network-page .ng-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.network-page .ng-swatch-person {
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #a9c0ff, #7aa2f7 55%, #4ec3c8);
+  box-shadow: 0 0 5px rgba(122, 162, 247, 0.55);
+}
+
+.network-page .ng-swatch-box {
+  width: 14px;
+  height: 11px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--sw) 26%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sw) 85%, transparent);
+}
+
+.network-page .ng-swatch-bridge {
+  border-radius: 50%;
+  border: 1.5px dashed #a78bfa;
+}
+
+.network-page .ng-swatch-conf {
+  width: 14px;
+  height: 4px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.network-page .ng-swatch-high {
+  color: #34d399;
+}
+
+.network-page .ng-swatch-med {
+  color: #f0b34b;
+}
+
+.network-page .ng-swatch-low {
+  color: #f87171;
+}
+
+/* ---------- Minimap + zoom controls (bottom-right) ---------- */
+
+.network-page .ng-minimap-wrap {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 10;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.network-page .ng-minimap {
+  display: block;
+  border: 1px solid #232b3a;
+  border-radius: 10px;
+  background: rgba(7, 11, 18, 0.86);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
+  cursor: crosshair;
+}
+
+.network-page .ng-mini-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ---------- Glass zoom control chips ---------- */
+
+.network-page .ng-control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 20, 32, 0.72);
+  backdrop-filter: blur(8px);
+  border: 1px solid #232b3a;
+  color: #c7d2de;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  transition: border-color 150ms ease, color 150ms ease, transform 100ms ease;
+}
+
+.network-page .ng-control:hover {
+  border-color: rgba(34, 211, 238, 0.55);
+  color: #e6e9ef;
+}
+
+.network-page .ng-control:active {
+  transform: translateY(1px);
+}

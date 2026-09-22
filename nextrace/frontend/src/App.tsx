@@ -1,4 +1,4 @@
-import { Routes, Route, Link, Navigate } from "react-router-dom";
+import { Routes, Route, Link, Navigate, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ProtectedRoute, AdminRoute } from "./components/Guards";
@@ -29,10 +29,12 @@ import AdminBackup from "./pages/admin/Backup";
 function Shell({ children }: { children: React.ReactNode }) {
   const { user, isAdmin, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const { pathname } = useLocation();
+  const isNetwork = pathname === "/network";
   return (
     <div className="bg-bg min-h-screen">
       <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen((v) => !v)} />
-      <div className={`flex flex-col min-h-screen min-w-0 transition-[padding-left] duration-300 ease-in-out ${sidebarOpen ? "pl-64" : "pl-0"}`}>
+      <div className={`flex flex-col min-w-0 transition-[padding-left] duration-300 ease-in-out ${sidebarOpen ? "pl-64" : "pl-0"} ${isNetwork ? "h-screen overflow-hidden" : "min-h-screen"}`}>
         <header className="h-16 border-b border-border bg-panel/60 backdrop-blur flex items-center justify-between px-6 sticky top-0 z-10">
           <div className="flex items-center gap-3">
             <button
@@ -60,7 +62,7 @@ function Shell({ children }: { children: React.ReactNode }) {
             </button>
           </div>
         </header>
-        <main className="flex-1 p-6 min-w-0">{children}</main>
+        <main className={`flex-1 min-w-0 ${isNetwork ? "p-0 min-h-0 overflow-hidden" : "p-6"}`}>{children}</main>
         <Footer />
       </div>
     </div>
